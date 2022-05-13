@@ -6,7 +6,7 @@ using namespace rb;
 
 // nastaveni paze roboruky: https://roboticsbrno.github.io/RB3201-RBControl-Roboruka-library/group__arm.html
 
-const int LED_COUNT = 15;
+const int LED_COUNT = 16;
 const int DATA_PIN = 32;
 const int CHANNEL = 0;
 
@@ -22,7 +22,7 @@ void SetLedAll(uint8_t R, uint8_t G, uint8_t B)
 }
 
 void setup() {
-    SetLedAll(64, 0, 0);
+    SetLedAll(0, 0, 0); // SetLedAll(255, 255, 255);
     rkConfig cfg;
     cfg.arm_bone_trims[0] = 25;
     cfg.arm_bone_trims[1] = 30;
