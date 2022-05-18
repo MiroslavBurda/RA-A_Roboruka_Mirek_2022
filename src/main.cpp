@@ -1,11 +1,18 @@
-#include <Arduino.h>
+#include <Arduino.h> // from Roboruka
 #include <SmartLeds.h>
 #include "RBControl.hpp" // for encoders 
 #include "roboruka.h"
 using namespace rb;
 
-// nastaveni paze roboruky: https://roboticsbrno.github.io/RB3201-RBControl-Roboruka-library/group__arm.html
+#include <driver/spi_master.h> // from pixy2
+#include <driver/uart.h>
+#include "pixy2/pixy2.hpp"
+#include "pixy2/spi.hpp"
+#include "pixy2/i2c.hpp"
+using namespace pixy2;
 
+// nastaveni paze roboruky: https://roboticsbrno.github.io/RB3201-RBControl-Roboruka-library/group__arm.html
+//todo nastaveni konstant
 const int LED_COUNT = 16;
 const int DATA_PIN = 32;
 const int CHANNEL = 0;
@@ -22,7 +29,9 @@ void SetLedAll(uint8_t R, uint8_t G, uint8_t B)
 }
 
 void setup() {
-    SetLedAll(0, 0, 0); // SetLedAll(255, 255, 255);
+    // SetLedAll(0, 0, 0); 
+    SetLedAll(255, 255, 255);
+
     rkConfig cfg;
     cfg.arm_bone_trims[0] = 25;
     cfg.arm_bone_trims[1] = 30;
@@ -34,44 +43,89 @@ void setup() {
     cfg.motor_max_power_pct = 100;
     cfg.motor_polarity_switch_left = true;
     cfg.motor_polarity_switch_right = true;
+    auto &man = Manager::get();
+    man.initSmartServoBus(5, (gpio_num_t)cfg.pins.arm_servos); // nastaveni poctu serv na roboruce 
     rkSetup(cfg);
-    auto& man = Manager::get();
+
+    uart_config_t uart_config = {  // zacatek nastaveni kamery 
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+    };
+    ESP_ERROR_CHECK(uart_param_config(UART_NUM_0, &uart_config));
+    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_0, 1, 3, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 256, 256, 0, NULL, 0));
+
+    spi_bus_config_t busCfg;
+    busCfg.mosi_io_num = GPIO_NUM_25; //13 
+    busCfg.miso_io_num = GPIO_NUM_26; //12
+    busCfg.sclk_io_num = GPIO_NUM_27; //14
+    busCfg.quadwp_io_num = -1;
+    busCfg.quadhd_io_num = -1;
+    busCfg.flags = SPICOMMON_BUSFLAG_MASTER | (1<<2);  // (1<<2) je SPICOMMON_BUSFLAG_GPIO_PINS
+
+    spi_host_device_t SPI2_HOST = (spi_host_device_t)1;
+    ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &busCfg, 0)); 
+
+    auto linkRes = LinkSpi::addSpiDevice(SPI2_HOST);
+    ESP_ERROR_CHECK(std::get<1>(linkRes));
+
+    LinkSpi link = std::move(std::get<0>(linkRes));
+    auto pixy = Pixy2<LinkSpi>(std::move(link));
+
+    ESP_ERROR_CHECK(pixy.waitForStartup());
+    GetBlocksContext blocksCtx;     // konec nastaveni kamery
+
+    int k = 120; 
+    int IDservo = 4;
+    // rkArmSetServo(3, 60); // parkovaci pozice 
 
     fmt::print("{}'s roboruka '{}' started!\n", cfg.owner, cfg.name);
     fmt::print("Battery at {}%, {}mV\n", rkBatteryPercent(), rkBatteryVoltageMv());
 
-    rkArmSetGrabbing(false);
-    fmt::print("open: {}\n", rkArmGetServo(2) );
-    delay(1000);
-    rkArmSetGrabbing(true);
-    fmt::print("close: {}\n", rkArmGetServo(2) );
-
-    int k = 0; 
-    while(true) {
-        delay(100);
-        
+    while(true) {          
+        // nastavovani serv 
         if (rkButtonIsPressed(1)) {
-            fmt::print("tlacitko\n");
-            fmt::print("{}\n", k); k++;
-            // //rkMotorsSetPower(50, 50);
-            // man.motor(MotorId::M1).drive(-500*110/100, 50);	// right motor 
-            // man.motor(MotorId::M2).drive(-500, 50);	// left motor
-            // delay(100);
-            // //man.motor(MotorId::M1).drive(0, 0);	// nezastavi, dokud nedojede minuly drive  
-            // //man.motor(MotorId::M2).drive(0, 0);
-            // rkMotorsSetPower(0, 0); // zastavi ihned, i kdyz probiha drive  	
-            // int32_t enR = man.motor(MotorId::M1).enc()->value();  // reading encoder
-            // int32_t enL = man.motor(MotorId::M2).enc()->value();
-            // fmt::print("{}: {},  {}\n", k, enL, enR);
-            rkArmSetServo(2, 120+k);  // 124 deg - rovnoběžná klepeta 
-            delay(1000);
-            fmt::print("vision: {}, position: {}\n", 120+k, rkArmGetServo(2) ); // pozice klepeta -  124 deg - 
+            k += 10;
+            rkArmSetServo(IDservo, k);
         }
+        if (rkButtonIsPressed(2)) { 
+            k-=10;
+            rkArmSetServo(IDservo, k);      
+        }
+        if (rkButtonIsPressed(3)) {
+            k += 1;
+            rkArmSetServo(IDservo, k);
+        }
+        fmt::print("vision: {}, position: {}\n", k, rkArmGetServo(IDservo) ); //konec testovani serv 
+        //delay(300);
+
+        auto err = pixy.getColorBlocks(1, 4, blocksCtx); // cervena  // zacatek testovani kamery 
+        if(err == pixy.ERR_PIXY_BUSY) {
+            vTaskDelay(1);
+            continue;
+        } else if(err != ESP_OK) {
+            printf("Error1: %d\n", err);
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
+ 
+        const uint8_t lorrisHeader[] = { 0xFF, 0x01, (uint8_t)(blocksCtx.blocks.size() * sizeof(ColorBlock)) };
+        uart_write_bytes(UART_NUM_0, (const char*)lorrisHeader, sizeof(lorrisHeader));
+        if(blocksCtx.blocks.size() > 0) {
+            uart_write_bytes(UART_NUM_0, (const char*)blocksCtx.blocks.data(), sizeof(ColorBlock)*blocksCtx.blocks.size());
+        }
+    
+        // int poziceX = blocksCtx.blocks[0]->x;
+        // int poziceY = blocksCtx.blocks[0]->y;
+        // int poziceX2 = blocksCtx.blocks[1]->x;
+        // int poziceY2 = blocksCtx.blocks[1]->y;
+
+        //    printf("i: %i, %i, %i, %i\n", poziceX, poziceY, poziceX2, poziceY2);
+        // vTaskDelay(pdMS_TO_TICKS(1000));   // konec testovani kamery 
     }
 }
 
-            //rkArmMoveTo(145, -45);   // je uprostred v prostoru
-            //rkArmSetGrabbing(false); // open: 87 deg
- 
-            //rkArmMoveTo(145, 65);   // je tesne nad zemi 
-            //rkArmSetGrabbing(true); // close: 160 deg 
+
