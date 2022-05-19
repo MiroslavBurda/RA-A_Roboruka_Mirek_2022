@@ -32,12 +32,12 @@ void setup() {
     // SetLedAll(0, 0, 0); 
     SetLedAll(255, 255, 255);
 
-    gpio_num_t SerialRx1 = GPIO_NUM_14;
-    gpio_num_t SerialTx1 = GPIO_NUM_4;
-    pinMode(SerialRx1, OUTPUT);
+    /*gpio_num_t SerialRx1 = GPIO_NUM_4;
+    gpio_num_t SerialTx1 = GPIO_NUM_14;
+    pinMode(SerialRx1, INPUT);
     pinMode(SerialTx1, OUTPUT);
     digitalWrite(SerialRx1, HIGH);
-    digitalWrite(SerialTx1, HIGH);
+    digitalWrite(SerialTx1, HIGH);*/
     rkConfig cfg;
     cfg.arm_bone_trims[0] = 25;
     cfg.arm_bone_trims[1] = 30;
@@ -52,6 +52,7 @@ void setup() {
     auto &man = Manager::get();
     man.initSmartServoBus(5, (gpio_num_t)cfg.pins.arm_servos); // nastaveni poctu serv na roboruce 
     rkSetup(cfg);
+    
 
     uart_config_t uart_config = {  // zacatek nastaveni kamery 
         .baud_rate = 115200,
@@ -93,7 +94,20 @@ void setup() {
     fmt::print("{}'s roboruka '{}' started!\n", cfg.owner, cfg.name);
     fmt::print("Battery at {}%, {}mV\n", rkBatteryPercent(), rkBatteryVoltageMv());
 
-    while(true) {          
+    Serial2.begin(115200, SERIAL_8N1, 4, 14); // Rx = 4 Tx = 14
+
+    while(true) {     
+        if (Serial2.available() > 0) {
+                    printf("begin \n");  
+byte readData[10]= { 1 }; //The character array is used as buffer to read into.
+            int x = Serial2.readBytes(readData, 8); //It require two things, variable name to read into, number of bytes to read.
+            Serial.println(x); //display number of character received in readData variable.
+        for(int i = 0; i<10; i++)
+            //Serial.println(readData[i]);
+            printf("i: %i, ", readData[i]); 
+        printf(" end \n");                 
+        }
+        
         // nastavovani serv 
         if (rkButtonIsPressed(1)) {
             k += 10;
@@ -119,13 +133,16 @@ void setup() {
             vTaskDelay(pdMS_TO_TICKS(500));
             continue;
         }
+
  
-        const uint8_t lorrisHeader[] = { 0xFF, 0x01, (uint8_t)(blocksCtx.blocks.size() * sizeof(ColorBlock)) };
-        uart_write_bytes(UART_NUM_0, (const char*)lorrisHeader, sizeof(lorrisHeader));
-        if(blocksCtx.blocks.size() > 0) {
-            uart_write_bytes(UART_NUM_0, (const char*)blocksCtx.blocks.data(), sizeof(ColorBlock)*blocksCtx.blocks.size());
-        }
-        // vTaskDelay(10);
+        // const uint8_t lorrisHeader[] = { 0xFF, 0x01, (uint8_t)(blocksCtx.blocks.size() * sizeof(ColorBlock)) };
+        // uart_write_bytes(UART_NUM_0, (const char*)lorrisHeader, sizeof(lorrisHeader));
+        // if(blocksCtx.blocks.size() > 0) {
+        //     uart_write_bytes(UART_NUM_0, (const char*)blocksCtx.blocks.data(), sizeof(ColorBlock)*blocksCtx.blocks.size());
+        // }
+
+        vTaskDelay(10);
+
         // uint8_t orderTest[] = { 0xFF,  0x01, 0x02, 0x03, 15  };
         // uart_write_bytes(UART_NUM_0, (const char*)orderTest, sizeof(orderTest));
 
