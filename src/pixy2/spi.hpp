@@ -46,7 +46,7 @@ public:
         {
             const size_t chunk = std::min(sizeof(zerobuf), len);
 
-            spi_transaction_t trans;
+            spi_transaction_t trans = {};
             trans.flags = 0;
             trans.length = chunk * 8;
             trans.tx_buffer = zerobuf;
@@ -65,7 +65,7 @@ public:
     }
 
     esp_err_t sendData(const uint8_t *data, size_t len) const {
-        spi_transaction_t trans;
+        spi_transaction_t trans = {};
         trans.flags = 0;
         trans.length = len * 8;
         trans.tx_buffer = data;

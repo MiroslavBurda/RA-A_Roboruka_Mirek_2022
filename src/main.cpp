@@ -32,6 +32,12 @@ void setup() {
     // SetLedAll(0, 0, 0); 
     SetLedAll(255, 255, 255);
 
+    gpio_num_t SerialRx1 = GPIO_NUM_14;
+    gpio_num_t SerialTx1 = GPIO_NUM_4;
+    pinMode(SerialRx1, OUTPUT);
+    pinMode(SerialTx1, OUTPUT);
+    digitalWrite(SerialRx1, HIGH);
+    digitalWrite(SerialTx1, HIGH);
     rkConfig cfg;
     cfg.arm_bone_trims[0] = 25;
     cfg.arm_bone_trims[1] = 30;
@@ -64,12 +70,14 @@ void setup() {
     busCfg.sclk_io_num = GPIO_NUM_27; //14
     busCfg.quadwp_io_num = -1;
     busCfg.quadhd_io_num = -1;
-    busCfg.flags = SPICOMMON_BUSFLAG_MASTER | (1<<2);  // (1<<2) je SPICOMMON_BUSFLAG_GPIO_PINS
+    busCfg.flags = SPICOMMON_BUSFLAG_MASTER;
+    busCfg.intr_flags = 0;
 
-    spi_host_device_t SPI2_HOST = (spi_host_device_t)1;
-    ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &busCfg, 0)); 
+    // spi_host_device_t SPI2_HOST = (spi_host_device_t)1; 
+    // spi_host_device_t SPI2_HOST = 1;
+    ESP_ERROR_CHECK(spi_bus_initialize(HSPI_HOST, &busCfg, 0)); 
 
-    auto linkRes = LinkSpi::addSpiDevice(SPI2_HOST);
+    auto linkRes = LinkSpi::addSpiDevice(HSPI_HOST, 2000000);
     ESP_ERROR_CHECK(std::get<1>(linkRes));
 
     LinkSpi link = std::move(std::get<0>(linkRes));
@@ -99,10 +107,10 @@ void setup() {
             k += 1;
             rkArmSetServo(IDservo, k);
         }
-        fmt::print("vision: {}, position: {}\n", k, rkArmGetServo(IDservo) ); //konec testovani serv 
+        //fmt::print("vision: {}, position: {}\n", k, rkArmGetServo(IDservo) ); //konec testovani serv 
         //delay(300);
 
-        auto err = pixy.getColorBlocks(1, 4, blocksCtx); // cervena  // zacatek testovani kamery 
+        auto err = pixy.getColorBlocks(1|2|4|8, 4, blocksCtx); // cervena | modra | zelena | cerna
         if(err == pixy.ERR_PIXY_BUSY) {
             vTaskDelay(1);
             continue;
@@ -117,6 +125,10 @@ void setup() {
         if(blocksCtx.blocks.size() > 0) {
             uart_write_bytes(UART_NUM_0, (const char*)blocksCtx.blocks.data(), sizeof(ColorBlock)*blocksCtx.blocks.size());
         }
+        // vTaskDelay(10);
+        // uint8_t orderTest[] = { 0xFF,  0x01, 0x02, 0x03, 15  };
+        // uart_write_bytes(UART_NUM_0, (const char*)orderTest, sizeof(orderTest));
+
     
         // int poziceX = blocksCtx.blocks[0]->x;
         // int poziceY = blocksCtx.blocks[0]->y;
