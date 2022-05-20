@@ -41,3 +41,10 @@ rkArmSetServo(4, k);  // ID =4 -> prave klepeto dole 140 nahoře 60 smerem nahor
             // fmt::print("{}: {},  {}\n", k, enL, enR);
               
             //rkArmSetServo(2, 120+k);  // 124 deg - rovnoběžná klepeta
+
+    /*gpio_num_t SerialRx1 = GPIO_NUM_4;
+    gpio_num_t SerialTx1 = GPIO_NUM_14;
+    pinMode(SerialRx1, INPUT);
+    pinMode(SerialTx1, OUTPUT);
+    digitalWrite(SerialRx1, HIGH);
+    digitalWrite(SerialTx1, HIGH);*/

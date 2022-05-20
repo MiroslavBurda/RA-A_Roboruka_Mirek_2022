@@ -15,7 +15,7 @@ public:
 
     // host has to be already initialized by spi_bus_initialize
     static std::tuple<LinkSpi, esp_err_t> addSpiDevice(spi_host_device_t host, int frequency_hz = 6000000) {
-        spi_device_interface_config_t devCfg = { };
+        spi_device_interface_config_t devCfg = { }; // ty prazdne slozene zavorky jsou tady proto, aby se na vychozi hodnotu nastavily automaticky ty promenne, ktere nejsou nastavene na nasledujicich radcich -> bez nich to nejede spravne 
         devCfg.mode = 3;
         devCfg.clock_speed_hz = frequency_hz;
         devCfg.spics_io_num = -1;
