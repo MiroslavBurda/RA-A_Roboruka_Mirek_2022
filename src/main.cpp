@@ -28,7 +28,7 @@ using namespace pixy2;
 // poodjet, aby se dalo klepeto položit na zem - nesmí být jiná kostka těsně kolem klepeta 
 // dojet ke kostce, vzít ji, odvést 
 
-bool LORRIS = true; // varianty debugu:  true - data UART0 jdou do Lorris, false - data jdou do Serial monitoru 
+bool LORRIS = false; // varianty debugu:  true - data UART0 jdou do Lorris, false - data jdou do Serial monitoru 
 
 const int LED_COUNT = 16; // zacatek nastaveni iLED  -------------------
 const int DATA_PIN = 32;
@@ -116,22 +116,22 @@ void setup() {
             }               
         }
         
-        // zacatek nastavovani serv ****************************************************************************************
-        if (rkButtonIsPressed(1)) {
-            k += 10;
-            rkArmSetServo(IDservo, k);
-        }
-        if (rkButtonIsPressed(2)) { 
-            k-=10;
-            rkArmSetServo(IDservo, k);      
-        }
-        if (rkButtonIsPressed(3)) {
-            k += 1;
-            rkArmSetServo(IDservo, k);
-        }
-        if(!LORRIS) {
-            fmt::print("vision: {}, position: {}\n", k, rkArmGetServo(IDservo) ); //konec nastavovani serv *****************
-        }
+        // // zacatek nastavovani serv ****************************************************************************************
+        // if (rkButtonIsPressed(1)) {
+        //     k += 10;
+        //     rkArmSetServo(IDservo, k);
+        // }
+        // if (rkButtonIsPressed(2)) { 
+        //     k-=10;
+        //     rkArmSetServo(IDservo, k);      
+        // }
+        // if (rkButtonIsPressed(3)) {
+        //     k += 1;
+        //     rkArmSetServo(IDservo, k);
+        // }
+        // if(!LORRIS) {
+        //     fmt::print("vision: {}, position: {}\n", k, rkArmGetServo(IDservo) ); //konec nastavovani serv *****************
+        // }
 
         auto err = pixy.getColorBlocks(1|2|4|8, 8, blocksCtx); // cervena | modra | zelena | cerna
         if(err == pixy.ERR_PIXY_BUSY) {
@@ -156,12 +156,12 @@ void setup() {
             uart_write_bytes(UART_NUM_0, (const char*)orderTest, sizeof(orderTest));
         }
         else  {
-            int poziceX = blocksCtx.blocks[0]->x;
-            int poziceY = blocksCtx.blocks[0]->y;
-            int poziceX2 = blocksCtx.blocks[1]->x;
-            int poziceY2 = blocksCtx.blocks[1]->y;
+            // int poziceX = blocksCtx.blocks[0]->x;
+            // int poziceY = blocksCtx.blocks[0]->y;
+            // int poziceX2 = blocksCtx.blocks[1]->x;
+            // int poziceY2 = blocksCtx.blocks[1]->y;
 
-            printf("i: %i, %i, %i, %i\n", poziceX, poziceY, poziceX2, poziceY2);
+           // printf("i: %i, %i, %i, %i\n", poziceX, poziceY, poziceX2, poziceY2);
         }
         
         vTaskDelay(pdMS_TO_TICKS(500));  
