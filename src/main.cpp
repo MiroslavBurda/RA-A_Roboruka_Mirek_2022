@@ -33,6 +33,40 @@ bool LORRIS = false; // varianty debugu:  true - data UART0 jdou do Lorris, fals
 const int LED_COUNT = 16; // zacatek nastaveni iLED  -------------------
 const int DATA_PIN = 32;
 const int CHANNEL = 0;
+
+bool red = true;
+const byte readSize = 8;
+const byte header = 250; //hlavicka zpravy ma tvar: {250, 250+k}, k = 1 ... 3    
+constexpr byte msgHeader[3] = {251, 252, 253};
+const byte minVzdal = 50; // minimalni vzdalenost, na ktere se sousedni robot muze priblizit, if se priblizi vic, tak abort();
+
+byte readData0[readSize]= {0}; //The character array is used as buffer to read into.
+byte readData1[readSize]= {0};
+byte readData2[readSize]= {0};
+byte state = 1; // stav programu
+bool startState = false; // if je odstartovano vytazenim lanka 
+byte speed = 35; // obvykla rychlost robota
+byte speedSlow = 20; // pomala = zataceci rychlost robota  
+
+/**
+ * @brief Funkce na vyhledání nejmenší hodnoty z byte pole. !!! Nulu to nebere jako nejmenší !!!
+ * 
+ * @param arr   Ukazatel na pole hodnot
+ * @param index Adresa kam má funkce vrátit pozici nejmenší hodnoty
+ * @return byte Vrací nejmenší hodnotu pole 
+ */
+byte min_arr(byte *arr, int &index){
+    byte tmp = 255;
+    index = -1;
+    for (size_t i = 0; i < 8; i++) {
+        if (arr[i] < tmp && arr[i] != 0) {
+            tmp = arr[i];
+            index = i;
+        }
+    }
+    return tmp;
+}
+
 // SmartLed -> RMT driver (WS2812/WS2812B/SK6812/WS2813)
 SmartLed leds(LED_WS2812, LED_COUNT, DATA_PIN, CHANNEL, DoubleBuffer);
 
@@ -45,9 +79,9 @@ void SetLedAll(uint8_t R, uint8_t G, uint8_t B) // iLED pro přisvícení kamery
 }       // konec nastaveni iLED ---------------------------------------
 
 void setup() {
-    // SetLedAll(0, 0, 0);  
+    SetLedAll(0, 0, 0);  
     // SetLedAll(127, 127, 127);  
-     SetLedAll(255, 255, 255);
+    // SetLedAll(255, 255, 255);
 
     rkConfig cfg;
     cfg.arm_bone_trims[0] = 25;  // nastaveni posunu serva robopaze vuci nulove poloze
@@ -73,98 +107,128 @@ void setup() {
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_0, 1, 3, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 256, 256, 0, NULL, 0));
 
-    spi_bus_config_t busCfg;        // zacatek nastaveni kamery +++++++++++++++++++++++++++++++++
-    busCfg.mosi_io_num = GPIO_NUM_25; 
-    busCfg.miso_io_num = GPIO_NUM_26; 
-    busCfg.sclk_io_num = GPIO_NUM_27; 
-    busCfg.quadwp_io_num = -1;
-    busCfg.quadhd_io_num = -1;
-    busCfg.flags = SPICOMMON_BUSFLAG_MASTER;
-    busCfg.intr_flags = 0;
-
-    ESP_ERROR_CHECK(spi_bus_initialize(HSPI_HOST, &busCfg, 0)); // HSPI_HOST je typ enum, nepsat číslo (1), ale tu danou konstantu z výběru  (HSPI_HOST)
-
-    auto linkRes = LinkSpi::addSpiDevice(HSPI_HOST, 2000000); // nastavení rychlost komunikace SPI na běžných pinech, aby to stíhaly RBC i zařízení - nutno vyzkoušet 
-    ESP_ERROR_CHECK(std::get<1>(linkRes));
-
-    LinkSpi link = std::move(std::get<0>(linkRes));
-    auto pixy = Pixy2<LinkSpi>(std::move(link));
-
-    ESP_ERROR_CHECK(pixy.waitForStartup());
-    GetBlocksContext blocksCtx;     // konec nastaveni kamery +++++++++++++++++++++++++++++++++++++
-
-    
+    rkLedBlue(true); // cekani na stisk Up, take po resetu stop tlacitkem, aby se zase hned nerozjela
+    printf("cekani na stisk Up\n");
+    while(true) {   
+        if(rkButtonUp(true)) {
+            break;
+        }
+        delay(10);
+    }
+    rkLedBlue(false);
 
     Serial2.begin(115200, SERIAL_8N1, 4, 14); // Rx = 4 Tx = 14
 
     fmt::print("{}'s roboruka '{}' started!\n", cfg.owner, cfg.name);
     fmt::print("Battery at {}%, {}mV\n", rkBatteryPercent(), rkBatteryVoltageMv());
 
-    // rkArmSetServo(3, 60); // parkovaci pozice 
-    int k = 120; 
-    int IDservo = 4;
+    // rkArmSetServo(3, 60); // parkovaci pozice
 
-    while(true) {     
-        if (Serial2.available() > 0) { 
-            byte readData[10]= { 1 }; //The character array is used as buffer to read into.
-            int x = Serial2.readBytes(readData, 8); //It require two things, variable name to read into, number of bytes to read.
-            Serial.println(x); //display number of character received in readData variable.
-            for(int i = 0; i<10; i++) {
-                if(!LORRIS) { 
-                    printf("i: %i, ", readData[i]); 
-                }
-            }               
+    rkLedYellow(true); // robot je připraven
+    if(red) {  
+        rkLedRed(true);
+        rkLedBlue(false);
+    }
+    else {
+        rkLedRed(false);
+        rkLedBlue(true);               
+    }
+
+    printf("vyber strany - tlacitko Down\n");
+    while(true) {   
+        if(!rkButtonLeft(false)) { // vytazeni startovaciho lanka na tl. Left rozjede robota  
+            startState = true;
+            printf("Rozjizdim se\n");
+            break;
         }
-        
-        // // zacatek nastavovani serv ****************************************************************************************
-        // if (rkButtonIsPressed(1)) {
-        //     k += 10;
-        //     rkArmSetServo(IDservo, k);
-        // }
-        // if (rkButtonIsPressed(2)) { 
-        //     k-=10;
-        //     rkArmSetServo(IDservo, k);      
-        // }
-        // if (rkButtonIsPressed(3)) {
-        //     k += 1;
-        //     rkArmSetServo(IDservo, k);
-        // }
-        // if(!LORRIS) {
-        //     fmt::print("vision: {}, position: {}\n", k, rkArmGetServo(IDservo) ); //konec nastavovani serv *****************
-        // }
-
-        auto err = pixy.getColorBlocks(1|2|4|8, 8, blocksCtx); // cervena | modra | zelena | cerna
-        if(err == pixy.ERR_PIXY_BUSY) {
-            vTaskDelay(1);
-            continue;
-        } else if(err != ESP_OK) {
-            printf("Error1: %d\n", err);
-            vTaskDelay(pdMS_TO_TICKS(500));
-            continue;
-        }
-
-        if(LORRIS) {
-            const uint8_t lorrisHeader[] = { 0xFF, 0x01, (uint8_t)(blocksCtx.blocks.size() * sizeof(ColorBlock)) };
-            uart_write_bytes(UART_NUM_0, (const char*)lorrisHeader, sizeof(lorrisHeader));
-            if(blocksCtx.blocks.size() > 0) {
-                uart_write_bytes(UART_NUM_0, (const char*)blocksCtx.blocks.data(), sizeof(ColorBlock)*blocksCtx.blocks.size());
+        if(rkButtonDown(true)) {
+            red = !red;
+            if(red) {
+                rkLedRed(true);
+                rkLedBlue(false);
             }
-        
-            vTaskDelay(1000); // aby Lorris nepadala, musí tady být pauza 
-
-            uint8_t orderTest[] = { 0xFF,  0x02, 0x02, 0x03, 15  };  // test exportu jiných dat než z kamery do Lorris 
-            uart_write_bytes(UART_NUM_0, (const char*)orderTest, sizeof(orderTest));
+            else {
+                rkLedRed(false);
+                rkLedBlue(true);               
+            }
         }
-        else  {
-            // int poziceX = blocksCtx.blocks[0]->x;
-            // int poziceY = blocksCtx.blocks[0]->y;
-            // int poziceX2 = blocksCtx.blocks[1]->x;
-            // int poziceY2 = blocksCtx.blocks[1]->y;
-
-           // printf("i: %i, %i, %i, %i\n", poziceX, poziceY, poziceX2, poziceY2);
+        delay(10);
+    }
+    delay(500); // robot se pri vytahovani lanka musi pridrzet -> mel by pockat, nez oddelam ruku, ale je lepsi drzet se pod urovni ultrazvuku  
+ 
+    
+    while(true) {  // hlavni smycka 
+        vTaskDelay(pdMS_TO_TICKS(500));  //************************* todo ZMENSIT   
+        int pozice0, pozice1, pozice2;
+            if (Serial2.available() > 0)  {  // reseni ultrazvuku 
+                int temp = Serial2.read();
+                if(temp == header) {
+                    // printf("bytes: %i \n", header); 
+                    if (Serial2.available() > 0) {
+                        int head = Serial2.read();
+                        printf("head: %i ", head); 
+                        switch (head) {
+                        case msgHeader[0]: 
+                            Serial2.readBytes(readData0, readSize); //It require two things, variable name to read into, number of bytes to read.
+                            for(int i = 0; i<8; i++) { printf("%i: %i, ", i, readData0[i]); } printf("\n ");
+                            break;        
+                        case msgHeader[1]:
+                            Serial2.readBytes(readData1, readSize); 
+                            for(int i = 0; i<8; i++) { printf("%i: %i, ", i, readData1[i]); } printf("\n ");
+                            break;        
+                        case msgHeader[2]:
+                            Serial2.readBytes(readData2, readSize); 
+                            for(int i = 0; i<8; i++) { printf("%i: %i, ", i, readData2[i]); } printf("\n ");
+                            break;
+                        default:
+                            printf("Nenasel druhy byte hlavicky !! "); 
+                        }
+                    }
+                    int min0 = min_arr(readData0, pozice0); 
+                    int min1 = min_arr(readData1, pozice0); 
+                    if ( (min0 == min1) && (min0 < minVzdal) ) {
+                        printf("Souper blizi...");
+                        if(startState) {
+                            printf("Souper se prilis priblizil...");
+                            abort();
+                        }
+                    }
+                }
+             
+            } // reseni ultrazvuku - konec
+              // todo dodělat ************  
+        if(state == 1) { // jizda rovne ze startu 
+            state = 2;
+            man.motor(MotorId::M1).drive(-500*110/100, 50);	// right motor <lze callback>
+            man.motor(MotorId::M2).drive(-500, 50);	// left motor
+            // rkMotorsDriveAsync(350, 350, speed, [&](){printf("ze startu\n"); state = 3;});
         }
+
+        if(state == 3) {
+            state = 4;
+            if (red){
+                rkMotorsDriveAsync(130, -130, speedSlow, [&](){printf("zatocil k nakladaku\n"); state = 5;});
+            }
+            else {
+                rkMotorsDriveAsync(-130, 130, speedSlow, [&](){printf("zatocil k nakladaku\n"); state = 5;});
+                delay(500);
+            }
+        }
+        if(state == 5) {
+            state = 6;
+            rkMotorsDriveAsync(1010, 1010, speed, [&](){printf("vytlacil\n"); state = 7;}); // ************ bez couvani - state 9 
         
-        vTaskDelay(pdMS_TO_TICKS(500));  
+
+    forwarding(500,speed);
+	if(red) {
+		rotating(115,speed_slow);
+	}
+	else {
+		rotating(115,-speed_slow);
+	}
+	forwarding(1120,speed);
+
+
     }
 }
 

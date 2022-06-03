@@ -23,7 +23,7 @@ public:
     const T* operator[]( size_t idx ) const {
         if(idx >= m_size) {
             ESP_LOGE("PixySpan", "attempted to get idx %d, but only have %d items.", idx, m_size);
-            abort();
+            // abort();
         }
         return &(m_data[idx]); // zde dodáno &
     }
