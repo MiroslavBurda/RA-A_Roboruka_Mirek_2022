@@ -11,6 +11,9 @@ using namespace rb;
 #include "pixy2/i2c.hpp"
 using namespace pixy2;
 
+// startuje z pravého horního rohu 
+// tlačítko SW1 spouští přípravu, tlačítko SW2 vybírá strany; startovací lanko rozjíždí - SW3
+
 // nastaveni paze roboruky: https://roboticsbrno.github.io/RB3201-RBControl-Roboruka-library/group__arm.html
 //todo nastaveni konstant - maximální hodnoty poloh pro serva 
 //todo dokončení komunikace mezi nano a esp32 - hlavička 1 bajt, zprávu pošlu 3x za sebou a vyhodnotím, if přišla pokaždé stejně 
@@ -38,15 +41,18 @@ bool red = true;
 const byte readSize = 8;
 const byte header = 250; //hlavicka zpravy ma tvar: {250, 250+k}, k = 1 ... 3    
 constexpr byte msgHeader[3] = {251, 252, 253};
-const byte minVzdal = 50; // minimalni vzdalenost, na ktere se sousedni robot muze priblizit, if se priblizi vic, tak abort();
+const byte minVzdal = 10; // minimalni vzdalenost, na ktere se sousedni robot muze priblizit, if se priblizi vic, tak abort();
 
 byte readData0[readSize]= {0}; //The character array is used as buffer to read into.
 byte readData1[readSize]= {0};
 byte readData2[readSize]= {0};
 byte state = 1; // stav programu
 bool startState = false; // if je odstartovano vytazenim lanka 
-byte speed = 35; // obvykla rychlost robota
+byte speed = 40; // obvykla rychlost robota
 byte speedSlow = 20; // pomala = zataceci rychlost robota  
+float coefSpeed = 1.17; // pravy motor je pomalejsi, takze se jeho rychlost musi nasobit touto konstantou 
+float ticksToMm = -1.33; // prepocet z tiku v enkoderech na mm 
+
 
 /**
  * @brief Funkce na vyhledání nejmenší hodnoty z byte pole. !!! Nulu to nebere jako nejmenší !!!
@@ -106,11 +112,12 @@ void setup() {
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_0, &uart_config));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_0, 1, 3, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 256, 256, 0, NULL, 0));
-
+    
+    rkLedGreen(false);
     rkLedBlue(true); // cekani na stisk Up, take po resetu stop tlacitkem, aby se zase hned nerozjela
-    printf("cekani na stisk Up\n");
+    printf("cekani na stisk SW1\n");
     while(true) {   
-        if(rkButtonUp(true)) {
+        if(!man.expander().digitalRead(SW1)) { // nula - stisknuto 
             break;
         }
         delay(10);
@@ -134,14 +141,14 @@ void setup() {
         rkLedBlue(true);               
     }
 
-    printf("vyber strany - tlacitko Down\n");
+    printf("vyber strany - SW2\n");
     while(true) {   
-        if(!rkButtonLeft(false)) { // vytazeni startovaciho lanka na tl. Left rozjede robota  
+        if(man.expander().digitalRead(SW3)) { // vytazeni startovaciho lanka na tl. Left rozjede robota  
             startState = true;
             printf("Rozjizdim se\n");
             break;
         }
-        if(rkButtonDown(true)) {
+        if(!man.expander().digitalRead(SW2)) {
             red = !red;
             if(red) {
                 rkLedRed(true);
@@ -151,14 +158,16 @@ void setup() {
                 rkLedRed(false);
                 rkLedBlue(true);               
             }
+        delay(300);
         }
-        delay(10);
+        
     }
     delay(500); // robot se pri vytahovani lanka musi pridrzet -> mel by pockat, nez oddelam ruku, ale je lepsi drzet se pod urovni ultrazvuku  
  
     
     while(true) {  // hlavni smycka 
-        vTaskDelay(pdMS_TO_TICKS(500));  //************************* todo ZMENSIT   
+        //vTaskDelay(pdMS_TO_TICKS(500));  //************************* todo ZMENSIT   
+        delay(10);
         int pozice0, pozice1, pozice2;
             if (Serial2.available() > 0)  {  // reseni ultrazvuku 
                 int temp = Serial2.read();
@@ -194,39 +203,50 @@ void setup() {
                         }
                     }
                 }
-             
+                printf("test1: %i ", state);
             } // reseni ultrazvuku - konec
-              // todo dodělat ************  
+              // todo dodělat ************ 
+
         if(state == 1) { // jizda rovne ze startu 
             state = 2;
-            man.motor(MotorId::M1).drive(-500*110/100, 50);	// right motor <lze callback>
-            man.motor(MotorId::M2).drive(-500, 50);	// left motor
-            // rkMotorsDriveAsync(350, 350, speed, [&](){printf("ze startu\n"); state = 3;});
+            man.motor(MotorId::M1).drive(350*ticksToMm, 50*coefSpeed, [&](rb::Encoder& _){printf("ze startu\n"); state = 3;});	// right motor <lze callback>
+            man.motor(MotorId::M2).drive(350*ticksToMm, 50);	// left motor
         }
+        printf("test2: ");
 
         if(state == 3) {
             state = 4;
             if (red){
-                rkMotorsDriveAsync(130, -130, speedSlow, [&](){printf("zatocil k nakladaku\n"); state = 5;});
-            }
+                // rkMotorsDriveAsync(130, -130, speedSlow, [&](){printf("zatocil k nakladaku\n"); state = 5;});
+                man.motor(MotorId::M1).drive(-130*ticksToMm, 50*coefSpeed, [&](rb::Encoder& _){printf("zatocil k nakladaku\n"); state = 5;});	// right motor <lze callback>
+                man.motor(MotorId::M2).drive( 130*ticksToMm, 50);	// left motor
+
+            } 
             else {
-                rkMotorsDriveAsync(-130, 130, speedSlow, [&](){printf("zatocil k nakladaku\n"); state = 5;});
-                delay(500);
+                //rkMotorsDriveAsync(-130, 130, speedSlow, [&](){printf("zatocil k nakladaku\n"); state = 5;});
+                man.motor(MotorId::M1).drive(-130*ticksToMm, 50*coefSpeed, [&](rb::Encoder& _){printf("zatocil k nakladaku\n"); state = 5;});	// right motor <lze callback>
+                man.motor(MotorId::M2).drive( 130*ticksToMm, 50);	// left motor
+                // delay(500);
             }
         }
+
         if(state == 5) {
             state = 6;
-            rkMotorsDriveAsync(1010, 1010, speed, [&](){printf("vytlacil\n"); state = 7;}); // ************ bez couvani - state 9 
+            // rkMotorsDriveAsync(1010, 1010, speed, [&](){printf("vytlacil\n"); state = 7;}); // ************ bez couvani - state 9 
+            man.motor(MotorId::M1).drive(1010*ticksToMm, 50*coefSpeed, [&](rb::Encoder& _){printf("vytlacil\n"); state = 7;});	// right motor <lze callback>
+            man.motor(MotorId::M2).drive(1010*ticksToMm, 50);
+        }
+
         
 
-    forwarding(500,speed);
-	if(red) {
-		rotating(115,speed_slow);
-	}
-	else {
-		rotating(115,-speed_slow);
-	}
-	forwarding(1120,speed);
+    // forwarding(500,speed);
+	// if(red) {
+	// 	rotating(115,speed_slow);
+	// }
+	// else {
+	// 	rotating(115,-speed_slow);
+	// }
+	// forwarding(1120,speed);
 
 
     }
