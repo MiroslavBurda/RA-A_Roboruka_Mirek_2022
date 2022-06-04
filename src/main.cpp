@@ -41,14 +41,14 @@ bool red = true;
 const byte readSize = 8;
 const byte header = 250; //hlavicka zpravy ma tvar: {250, 250+k}, k = 1 ... 3    
 constexpr byte msgHeader[3] = {251, 252, 253};
-const byte minVzdal = 10; // minimalni vzdalenost, na ktere se sousedni robot muze priblizit, if se priblizi vic, tak abort();
+const byte minVzdal = 60; // minimalni vzdalenost, na ktere se sousedni robot muze priblizit, if se priblizi vic, tak abort();
 
 byte readData0[readSize]= {0}; //The character array is used as buffer to read into.
 byte readData1[readSize]= {0};
 byte readData2[readSize]= {0};
 byte state = 1; // stav programu
 bool startState = false; // if je odstartovano vytazenim lanka 
-byte speed = 40; // obvykla rychlost robota
+byte speed = 20; // obvykla rychlost robota
 byte speedSlow = 20; // pomala = zataceci rychlost robota  
 float coefSpeed = 1.17; // pravy motor je pomalejsi, takze se jeho rychlost musi nasobit touto konstantou 
 float ticksToMm = -1.33; // prepocet z tiku v enkoderech na mm 
@@ -218,14 +218,14 @@ void setup() {
             state = 4;
             if (red){
                 // rkMotorsDriveAsync(130, -130, speedSlow, [&](){printf("zatocil k nakladaku\n"); state = 5;});
-                man.motor(MotorId::M1).drive(-130*ticksToMm, 50*coefSpeed, [&](rb::Encoder& _){printf("zatocil k nakladaku\n"); state = 5;});	// right motor <lze callback>
-                man.motor(MotorId::M2).drive( 130*ticksToMm, 50);	// left motor
+                man.motor(MotorId::M1).drive(-100*ticksToMm, 50*coefSpeed, [&](rb::Encoder& _){printf("zatocil k nakladaku\n"); state = 5;});	// right motor <lze callback>
+                man.motor(MotorId::M2).drive( 100*ticksToMm, 50);	// left motor
 
             } 
             else {
                 //rkMotorsDriveAsync(-130, 130, speedSlow, [&](){printf("zatocil k nakladaku\n"); state = 5;});
-                man.motor(MotorId::M1).drive(-130*ticksToMm, 50*coefSpeed, [&](rb::Encoder& _){printf("zatocil k nakladaku\n"); state = 5;});	// right motor <lze callback>
-                man.motor(MotorId::M2).drive( 130*ticksToMm, 50);	// left motor
+                man.motor(MotorId::M1).drive( 130*ticksToMm, 50*coefSpeed, [&](rb::Encoder& _){printf("zatocil k nakladaku\n"); state = 5;});	// right motor <lze callback>
+                man.motor(MotorId::M2).drive(-130*ticksToMm, 50);	// left motor
                 // delay(500);
             }
         }
@@ -233,8 +233,8 @@ void setup() {
         if(state == 5) {
             state = 6;
             // rkMotorsDriveAsync(1010, 1010, speed, [&](){printf("vytlacil\n"); state = 7;}); // ************ bez couvani - state 9 
-            man.motor(MotorId::M1).drive(1010*ticksToMm, 50*coefSpeed, [&](rb::Encoder& _){printf("vytlacil\n"); state = 7;});	// right motor <lze callback>
-            man.motor(MotorId::M2).drive(1010*ticksToMm, 50);
+            man.motor(MotorId::M1).drive(1110*ticksToMm, 50*coefSpeed, [&](rb::Encoder& _){printf("vytlacil\n"); state = 7;});	// right motor <lze callback>
+            man.motor(MotorId::M2).drive(1110*ticksToMm, 50);
         }
 
         
